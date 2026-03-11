@@ -630,6 +630,25 @@ export class Neo4jStorageProvider implements StorageProvider {
 
         try {
           for (const entity of entities) {
+            // Check if entity already exists (deduplication)
+            const existsQuery = `
+              MATCH (e:Entity {name: $name})
+              WHERE e.validTo IS NULL
+              RETURN count(e) as count
+            `;
+
+            const existsResult = await txc.run(existsQuery, {
+              name: entity.name,
+            });
+
+            const existingCount = existsResult.records[0]?.get('count')?.toNumber() || 0;
+            if (existingCount > 0) {
+              logger.debug(
+                `Skipping duplicate entity: ${entity.name}`
+              );
+              continue;
+            }
+
             // Generate temporal and identity metadata
             const now = Date.now();
             const entityId = uuidv4();
