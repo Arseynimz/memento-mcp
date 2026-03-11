@@ -772,6 +772,27 @@ export class Neo4jStorageProvider implements StorageProvider {
               continue;
             }
 
+            // Check if relation already exists (deduplication)
+            const existsQuery = `
+              MATCH (from:Entity {name: $fromName})-[r:RELATES_TO {relationType: $relationType}]->(to:Entity {name: $toName})
+              WHERE r.validTo IS NULL
+              RETURN count(r) as count
+            `;
+
+            const existsResult = await txc.run(existsQuery, {
+              fromName: relation.from,
+              toName: relation.to,
+              relationType: relation.relationType,
+            });
+
+            const existingCount = existsResult.records[0]?.get('count')?.toNumber() || 0;
+            if (existingCount > 0) {
+              logger.debug(
+                `Skipping duplicate relation: ${relation.from} -[${relation.relationType}]-> ${relation.to}`
+              );
+              continue;
+            }
+
             // Create relation with parameters
             const extendedRelation = relation as ExtendedRelation;
             const params = {
